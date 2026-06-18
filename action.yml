@@ -1,0 +1,30 @@
+name: 'mermaid-lint'
+description: 'Validate Mermaid diagrams in Markdown files with inline PR annotations'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+inputs:
+  files:
+    description: >
+      Space-separated glob patterns to validate.
+      Defaults to git-tracked *.md / *.mmd / *.mdx files when omitted.
+    required: false
+    default: ''
+  strict:
+    description: 'Treat semantic warnings as errors (exit 1 on warnings).'
+    required: false
+    default: 'false'
+  working-directory:
+    description: 'Directory to run mermaid-lint from. Defaults to repo root.'
+    required: false
+    default: '.'
+outputs:
+  diagrams:
+    description: 'Total number of diagrams checked'
+  errors:
+    description: 'Number of diagrams with errors'
+  warnings:
+    description: 'Number of semantic warnings'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
