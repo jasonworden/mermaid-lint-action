@@ -63,4 +63,4 @@ With `strict: true`, semantic warnings (e.g. duplicate node IDs) are also annota
 
 ## Requirements
 
-Requires Node.js 20 (provided by the GitHub-hosted runners).
+Requires Node.js 24 (provided by the GitHub-hosted runners).
