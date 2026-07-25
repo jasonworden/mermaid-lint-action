@@ -1,0 +1,83 @@
+name: Release
+
+# Cut a release by pushing a semver tag:
+#
+#   git tag v1.0.1 && git push origin v1.0.1
+#
+# This publishes the GitHub Release and force-moves the matching major alias
+# (v1) so that `uses: jasonworden/mermaid-lint-action@v1` follows along.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish release and move major alias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # A tag is immutable once consumers pin to it, so re-verify the bundle
+      # here rather than trusting that CI ran on whatever commit was tagged.
+      - name: Verify dist/ matches src/
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain -- dist/)" ]; then
+            echo "::error::dist/ is out of date at this tag. Rebuild, commit, and re-tag."
+            git status --porcelain -- dist/
+            exit 1
+          fi
+
+      - name: Derive version and major alias
+        id: ver
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "$REF_NAME" in
+            v*.*.*) ;;
+            *) echo "::error::Unexpected tag '$REF_NAME'."; exit 1 ;;
+          esac
+          echo "version=$REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "major=${REF_NAME%%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --generate-notes \
+            --verify-tag
+
+      # Last, so the alias only advances once the release itself succeeded —
+      # consumers pinned to @v1 are what this moves, and a half-finished
+      # release should not become the one they resolve to.
+      #
+      # Pushes made with GITHUB_TOKEN do not trigger workflows, so this cannot
+      # re-enter the job (and `v1` would not match the tag filter regardless).
+      - name: Move major alias tag
+        env:
+          MAJOR: ${{ steps.ver.outputs.major }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -f -a "$MAJOR" -m "Track the latest $MAJOR release ($VERSION)"
+          git push -f origin "refs/tags/$MAJOR"
