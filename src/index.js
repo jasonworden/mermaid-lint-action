@@ -2,17 +2,16 @@
 const core = require('@actions/core');
 const exec = require('@actions/exec');
 const { buildAnnotations } = require('./annotate.js');
+const { buildNpxArgs, readSummary, formatSummary } = require('./cli.js');
 
 async function run() {
-  const filesInput = core.getInput('files').trim();
+  // No trim: buildNpxArgs splits on whitespace and drops empties.
+  const files = core.getInput('files');
   const strict = core.getBooleanInput('strict');
+  const version = core.getInput('version').trim();
   const workingDir = core.getInput('working-directory').trim() || '.';
 
-  const args = ['--yes', '@mermaid-lint/cli', '--format', 'json'];
-  if (strict) args.push('--strict');
-  if (filesInput) {
-    args.push(...filesInput.split(/\s+/).filter(Boolean));
-  }
+  const args = buildNpxArgs({ files, strict, version });
 
   let stdout = '';
   let stderr = '';
@@ -29,12 +28,12 @@ async function run() {
   let results;
   try {
     results = JSON.parse(stdout);
-  } catch (e) {
+  } catch {
     core.setFailed(`mermaid-lint produced unexpected output.\nstdout: ${stdout}\nstderr: ${stderr}`);
     return;
   }
 
-  const { errors, warnings } = buildAnnotations(results, strict);
+  const { errors, warnings } = buildAnnotations(results);
   for (const err of errors) {
     core.error(err.message, { file: err.file, startLine: err.startLine });
   }
@@ -42,13 +41,12 @@ async function run() {
     core.warning(w.message, { file: w.file, startLine: w.startLine });
   }
 
-  core.setOutput('diagrams', String(results.summary.diagrams));
-  core.setOutput('errors', String(results.summary.errors));
-  core.setOutput('warnings', String(results.summary.warnings));
+  const summary = readSummary(results);
+  core.setOutput('diagrams', String(summary.diagrams));
+  core.setOutput('errors', String(summary.errors));
+  core.setOutput('warnings', String(summary.warnings));
 
-  const { diagrams, errors: errCount, warnings: warnCount, files } = results.summary;
-  const msg = `Checked ${diagrams} diagram(s) in ${files} file(s) — ${errCount} error(s), ${warnCount} warning(s)`;
-
+  const msg = formatSummary(summary);
   if (exitCode !== 0) {
     core.setFailed(msg);
   } else {

@@ -1,0 +1,8 @@
+# dist/ is an ncc bundle, committed because the runner executes it directly.
+# Marking it generated collapses it by default in pull request diffs and keeps
+# it out of the repo's language stats — a dependency bump rewrites most of the
+# 1 MB file and would otherwise bury the real change.
+#
+# Note this is display-only: the bundle is still diffed and still guarded by
+# `npm run verify-dist` in CI.
+dist/index.js linguist-generated=true

@@ -1,0 +1,102 @@
+# Post-merge tag + release. The version bump happens in the PR (see
+# version-check.yml and scripts/check-version-bump.js); this workflow only
+# reacts to a version already sitting on main. It never commits and never
+# decides a bump level.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Is this version released yet?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.check.outputs.needed }}
+      tag: ${{ steps.check.outputs.tag }}
+      major: ${{ steps.check.outputs.major }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keyed on whether the tag already exists rather than on a HEAD^ diff.
+      # A HEAD^ comparison assumes main advances exactly one commit per merge,
+      # which squash merges satisfy but rebase merges and multi-commit pushes do
+      # not — there the bump can sit in an earlier commit, making HEAD^ look
+      # unchanged and silently skipping the release. Tag existence answers the
+      # real question and holds for every merge strategy.
+      - name: Check
+        id: check
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG is already released — nothing to do."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$TAG is not released yet."
+            {
+              echo "needed=true"
+              echo "tag=$TAG"
+              echo "major=v${VERSION%%.*}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Tag, release, and move the major alias
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # A tag is immutable once consumers pin to it, so re-verify here instead
+      # of trusting that CI ran on whatever ended up merged.
+      - run: npm run verify-dist
+
+      - run: npm run test:integration
+
+      # Creates the tag and the release in one call, so a failure leaves neither
+      # behind and a re-run starts clean.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
+
+      # Actions-specific, and why this differs from jasonworden/supervision:
+      # consumers write `uses: ...@v1`, so the major alias has to be force-moved
+      # onto each release or it goes stale. Last, so it only advances once the
+      # release itself succeeded. GITHUB_TOKEN pushes do not trigger workflows,
+      # so this cannot re-enter the job.
+      - name: Move the major alias tag
+        env:
+          MAJOR: ${{ needs.check.outputs.major }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -f -a "$MAJOR" -m "Track the latest $MAJOR release ($TAG)"
+          git push -f origin "refs/tags/$MAJOR"

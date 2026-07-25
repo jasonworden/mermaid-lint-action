@@ -1,4 +1,6 @@
 node_modules/
-licenses.txt
 .DS_Store
-docs/
+.worktrees/
+
+# ncc emits this next to the bundle; the bundle itself is committed.
+dist/licenses.txt

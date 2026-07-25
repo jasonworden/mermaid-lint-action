@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Collapse superseded PR runs, but never cancel a run on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Unit tests and bundle freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # Rebuilds and fails on drift. dist/ is executed directly by the runner,
+      # so a stale bundle ships source changes that never take effect.
+      - run: npm run verify-dist
+
+      # Runs the freshly built bundle against the real CLI. Deliberately after
+      # verify-dist so it exercises a bundle known to match src/.
+      - run: npm run test:integration
+
+  dogfood:
+    name: Lint our own diagrams
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+
+      # Uses the action from this checkout rather than a published ref, so the
+      # code under review is what actually runs. Both cases live in one job so
+      # the second npx invocation hits the first one's warm cache.
+      - name: Lint the README and the clean fixture
+        uses: ./
+        with:
+          files: 'README.md test/fixtures/valid.md'
+          strict: true
+
+      - name: Lint a deliberately broken fixture
+        id: broken
+        uses: ./
+        continue-on-error: true
+        with:
+          files: 'test/fixtures/invalid.md'
+
+      - name: Assert the broken fixture was reported
+        env:
+          OUTCOME: ${{ steps.broken.outcome }}
+          ERRORS: ${{ steps.broken.outputs.errors }}
+          DIAGRAMS: ${{ steps.broken.outputs.diagrams }}
+        run: |
+          echo "outcome=$OUTCOME errors=$ERRORS diagrams=$DIAGRAMS"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::Expected the action to fail on invalid.md, got '$OUTCOME'."
+            exit 1
+          fi
+          if [ "$ERRORS" != "1" ] || [ "$DIAGRAMS" != "1" ]; then
+            echo "::error::Expected 1 error in 1 diagram, got errors=$ERRORS diagrams=$DIAGRAMS."
+            exit 1
+          fi
