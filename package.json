@@ -6,7 +6,9 @@
   "type": "commonjs",
   "scripts": {
     "build": "ncc build src/index.js -o dist --license licenses.txt",
-    "test": "node --test \"test/**/*.test.js\""
+    "verify-dist": "npm run build && node scripts/verify-dist.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:integration": "node --test \"test/integration/*.test.js\""
   },
   "dependencies": {
     "@actions/core": "^2.0.3",

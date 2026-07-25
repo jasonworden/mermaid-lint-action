@@ -9,16 +9,23 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   version-check:
     name: Version bumped when the action changed
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # Full history so the script can diff against origin/main.
+      # Full commit history so the script can diff against origin/main, but
+      # blob:none skips file contents — otherwise every run downloads every
+      # historical revision of the 1 MB committed bundle.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          filter: blob:none
 
       - uses: actions/setup-node@v7
         with:

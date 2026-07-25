@@ -1,23 +1,23 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildNpxArgs, readSummary, formatSummary } = require('../src/args.js');
+const { CLI_PACKAGE, buildNpxArgs, readSummary, formatSummary } = require('../src/cli.js');
 
 test('defaults produce an unpinned, non-strict json invocation', () => {
-  assert.deepEqual(buildNpxArgs(), ['--yes', '@mermaid-lint/cli', '--format', 'json']);
+  assert.deepEqual(buildNpxArgs(), ['--yes', CLI_PACKAGE, '--format', 'json']);
 });
 
 test('version is appended as an npm spec', () => {
   const args = buildNpxArgs({ version: '^0.35.1' });
-  assert.equal(args[1], '@mermaid-lint/cli@^0.35.1');
+  assert.equal(args[1], `${CLI_PACKAGE}@^0.35.1`);
 });
 
 test('empty version leaves the package unpinned', () => {
-  assert.equal(buildNpxArgs({ version: '' })[1], '@mermaid-lint/cli');
+  assert.equal(buildNpxArgs({ version: '' })[1], CLI_PACKAGE);
 });
 
 test('an exact version pins exactly', () => {
-  assert.equal(buildNpxArgs({ version: '0.35.1' })[1], '@mermaid-lint/cli@0.35.1');
+  assert.equal(buildNpxArgs({ version: '0.35.1' })[1], `${CLI_PACKAGE}@0.35.1`);
 });
 
 test('strict adds --strict', () => {
@@ -31,12 +31,12 @@ test('files are split on arbitrary whitespace', () => {
 });
 
 test('blank files input contributes no arguments', () => {
-  assert.deepEqual(buildNpxArgs({ files: '   ' }), ['--yes', '@mermaid-lint/cli', '--format', 'json']);
+  assert.deepEqual(buildNpxArgs({ files: '   ' }), ['--yes', CLI_PACKAGE, '--format', 'json']);
 });
 
 test('--format json precedes the file list so globs are never read as flags values', () => {
   const args = buildNpxArgs({ files: 'a.md', strict: true, version: '1.0.0' });
-  assert.deepEqual(args, ['--yes', '@mermaid-lint/cli@1.0.0', '--format', 'json', '--strict', 'a.md']);
+  assert.deepEqual(args, ['--yes', `${CLI_PACKAGE}@1.0.0`, '--format', 'json', '--strict', 'a.md']);
 });
 
 test('readSummary tolerates a missing summary block', () => {

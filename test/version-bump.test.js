@@ -51,19 +51,31 @@ test('releaseAffectingPaths picks out what consumers actually run', () => {
       'src/annotate.js',
       '.github/workflows/ci.yml',
       'action.yml',
-      'test/args.test.js',
+      'test/cli.test.js',
       'dist/index.js',
     ]),
     ['src/annotate.js', 'action.yml', 'dist/index.js'],
   );
 });
 
-test('releaseAffectingPaths ignores lookalikes outside the released tree', () => {
+test('releaseAffectingPaths exempts docs, CI, tests, and scripts', () => {
   assert.deepEqual(releaseAffectingPaths([
-    'docs/src/notes.md',
-    'test/fixtures/action.yml',
+    'README.md',
+    'LICENSE',
+    '.gitignore',
+    '.github/workflows/release.yml',
+    'test/fixtures/valid.md',
     'scripts/check-version-bump.js',
   ]), []);
+});
+
+test('releaseAffectingPaths treats an unrecognised new path as released', () => {
+  // The exempt-list is deliberately fail-closed: a path nobody thought about
+  // requires a bump rather than silently producing no release.
+  assert.deepEqual(
+    releaseAffectingPaths(['bin/mermaid-lint-action', 'templates/report.hbs']),
+    ['bin/mermaid-lint-action', 'templates/report.hbs'],
+  );
 });
 
 test('a src change without a bump fails', () => {
@@ -94,7 +106,7 @@ test('a CI-only PR needs no bump', () => {
   const r = evaluateVersionBump({
     baseVersion: '1.0.0',
     headVersion: '1.0.0',
-    changedPaths: ['.github/workflows/ci.yml', 'test/args.test.js'],
+    changedPaths: ['.github/workflows/ci.yml', 'test/cli.test.js'],
   });
   assert.equal(r.ok, true);
 });
@@ -133,4 +145,12 @@ test('a version decrease fails regardless of what changed', () => {
 test('an empty changeset needs no bump', () => {
   const r = evaluateVersionBump({ baseVersion: '1.0.0', headVersion: '1.0.0', changedPaths: [] });
   assert.equal(r.ok, true);
+});
+
+test('a prerelease version fails with a readable reason rather than throwing', () => {
+  const r = evaluateVersionBump({
+    baseVersion: '1.0.0', headVersion: '1.1.0-rc.1', changedPaths: ['src/index.js'],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Not a plain X\.Y\.Z version/);
 });

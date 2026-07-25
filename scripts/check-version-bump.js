@@ -22,8 +22,25 @@ const { resolve } = require('node:path');
 
 const root = resolve(__dirname, '..');
 
-/** Paths whose contents end up in what consumers actually run. */
-const RELEASE_PATHS = [/^src\//, /^dist\//, /^action\.yml$/];
+/**
+ * Paths that do NOT reach consumers, so changing them alone needs no bump.
+ *
+ * Deliberately an exempt-list rather than a list of released paths: a new
+ * released path (a second entrypoint, a bin/, a template dir) then requires a
+ * bump by default. The allowlist version of this fails open — you would get no
+ * release and no warning, and find out when someone reports @v1 never picked
+ * up the fix.
+ */
+const EXEMPT_PATHS = [
+  /^README\.md$/,
+  /^LICENSE$/,
+  /^\.gitignore$/,
+  /^\.gitattributes$/,
+  /^\.npmrc$/,
+  /^\.github\//,
+  /^test\//,
+  /^scripts\//,
+];
 
 /**
  * @param {string} str
@@ -60,10 +77,10 @@ function diffLevel(base, head) {
 
 /**
  * @param {string[]} changedPaths - repo-relative, as `git diff --name-only` prints them
- * @returns {string[]} the subset that affects what consumers run
+ * @returns {string[]} the subset that reaches consumers
  */
 function releaseAffectingPaths(changedPaths) {
-  return changedPaths.filter((p) => RELEASE_PATHS.some((re) => re.test(p)));
+  return changedPaths.filter((p) => !EXEMPT_PATHS.some((re) => re.test(p)));
 }
 
 /**
@@ -71,7 +88,14 @@ function releaseAffectingPaths(changedPaths) {
  * @returns {{ok: boolean, reason: string}}
  */
 function evaluateVersionBump({ baseVersion, headVersion, changedPaths }) {
-  const level = diffLevel(parseVersion(baseVersion), parseVersion(headVersion));
+  let level;
+  try {
+    level = diffLevel(parseVersion(baseVersion), parseVersion(headVersion));
+  } catch (err) {
+    // Returned rather than thrown so the caller still prints a readable FAIL:
+    // a prerelease like 1.2.0-rc.1 is a policy violation, not a crash.
+    return { ok: false, reason: err.message };
+  }
   const affecting = releaseAffectingPaths(changedPaths);
 
   if (level === 'invalid') {
@@ -107,9 +131,15 @@ function git(args) {
 
 function getBaseVersion() {
   try {
-    git(['fetch', 'origin', 'main', '--quiet']);
+    // Already present after a full checkout, so CI skips the network entirely;
+    // this fetch exists for local runs.
+    git(['rev-parse', '--verify', '--quiet', 'origin/main']);
   } catch {
-    // Best-effort: origin/main may already be present, in which case the read below still works.
+    try {
+      git(['fetch', 'origin', 'main', '--quiet']);
+    } catch {
+      // Fall through — the read below produces the actionable error.
+    }
   }
   try {
     return JSON.parse(git(['show', 'origin/main:package.json'])).version;

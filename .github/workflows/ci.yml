@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# Collapse superseded PR runs, but never cancel a run on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Unit tests and bundle freshness
@@ -24,23 +29,13 @@ jobs:
 
       - run: npm test
 
-      # dist/ is committed because GitHub runs the bundle directly, so a stale
-      # bundle ships source changes that silently never take effect. Rebuild and
-      # fail if the result differs from what was committed.
-      - name: Rebuild bundle
-        run: npm run build
+      # Rebuilds and fails on drift. dist/ is executed directly by the runner,
+      # so a stale bundle ships source changes that never take effect.
+      - run: npm run verify-dist
 
-      # --porcelain rather than `git diff` so a newly emitted bundle file counts
-      # as drift too; `git diff` alone would not see an untracked one.
-      - name: Verify dist/ matches src/
-        run: |
-          if [ -n "$(git status --porcelain -- dist/)" ]; then
-            echo "::error::dist/ is out of date. Run 'npm run build' and commit the result."
-            git status --porcelain -- dist/
-            git diff -- dist/ | head -100
-            exit 1
-          fi
-          echo "dist/ is in sync with src/"
+      # Runs the freshly built bundle against the real CLI. Deliberately after
+      # verify-dist so it exercises a bundle known to match src/.
+      - run: npm run test:integration
 
   dogfood:
     name: Lint our own diagrams
@@ -50,42 +45,33 @@ jobs:
       - uses: actions/checkout@v7
 
       # Uses the action from this checkout rather than a published ref, so the
-      # code under review is what actually runs. Fixtures are excluded because
-      # test/fixtures/invalid.md is broken on purpose.
-      - uses: ./
+      # code under review is what actually runs. Both cases live in one job so
+      # the second npx invocation hits the first one's warm cache.
+      - name: Lint the README and the clean fixture
+        uses: ./
         with:
           files: 'README.md test/fixtures/valid.md'
           strict: true
 
-  dogfood-negative:
-    name: Fail on a known-bad diagram
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v7
-
-      - id: lint
+      - name: Lint a deliberately broken fixture
+        id: broken
         uses: ./
         continue-on-error: true
         with:
           files: 'test/fixtures/invalid.md'
 
-      - name: Assert the action reported the failure
+      - name: Assert the broken fixture was reported
         env:
-          OUTCOME: ${{ steps.lint.outcome }}
-          ERRORS: ${{ steps.lint.outputs.errors }}
-          DIAGRAMS: ${{ steps.lint.outputs.diagrams }}
+          OUTCOME: ${{ steps.broken.outcome }}
+          ERRORS: ${{ steps.broken.outputs.errors }}
+          DIAGRAMS: ${{ steps.broken.outputs.diagrams }}
         run: |
           echo "outcome=$OUTCOME errors=$ERRORS diagrams=$DIAGRAMS"
           if [ "$OUTCOME" != "failure" ]; then
             echo "::error::Expected the action to fail on invalid.md, got '$OUTCOME'."
             exit 1
           fi
-          if [ "$ERRORS" != "1" ]; then
-            echo "::error::Expected errors output to be 1, got '$ERRORS'."
-            exit 1
-          fi
-          if [ "$DIAGRAMS" != "1" ]; then
-            echo "::error::Expected diagrams output to be 1, got '$DIAGRAMS'."
+          if [ "$ERRORS" != "1" ] || [ "$DIAGRAMS" != "1" ]; then
+            echo "::error::Expected 1 error in 1 diagram, got errors=$ERRORS diagrams=$DIAGRAMS."
             exit 1
           fi

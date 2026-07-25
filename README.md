@@ -110,19 +110,24 @@ Requires Node.js 24 (provided by the GitHub-hosted runners).
 
 ```bash
 npm ci
-npm test
-npm run build
+npm test              # unit tests: offline, no network
+npm run verify-dist   # rebuild and fail if the committed bundle drifted
+npm run test:integration  # runs the built bundle against the real CLI
 ```
 
 `dist/` is a committed [ncc](https://github.com/vercel/ncc) bundle, because
 GitHub runs the bundle directly rather than installing dependencies. Any change
 under `src/` therefore needs `npm run build` committed alongside it; CI fails
-the build if the two drift apart.
+the build if the two drift apart. It is marked `linguist-generated` so pull
+request diffs collapse it — a dependency bump rewrites most of the 1 MB file.
 
-CI also runs the action against its own diagrams, including a deliberately
-broken fixture it expects to fail. That is not circular — the action depends on
-the `@mermaid-lint/cli` npm package, which has no dependency back on this
-repository.
+`npm test` is unit-only so it stays fast and offline. The integration tests
+run the built bundle against the real CLI and assert that annotations land on
+the right source lines, deriving the expected line by searching the fixture
+rather than hard-coding it. CI also runs the action against its own diagrams
+via `uses: ./`, including a deliberately broken fixture it expects to fail.
+That is not circular — the action depends on the `@mermaid-lint/cli` npm
+package, which has no dependency back on this repository.
 
 ## Releasing
 
@@ -135,9 +140,15 @@ Releases are driven by `package.json`'s version, bumped in the PR itself:
 
 No tag is pushed by hand, and no workflow commits back to `main`.
 
-A PR that touches `src/`, `dist/`, or `action.yml` without bumping the version
+A PR that changes anything consumers actually run, without bumping the version,
 fails the Version Check job — otherwise the merge would quietly produce no
-release at all. Docs- and CI-only PRs need no bump.
+release at all. Docs, CI, tests, and scripts are exempt; everything else
+requires a bump, so a newly added released path fails closed rather than
+silently skipping its release.
+
+Version Check only blocks a merge if it is configured as a **required status
+check** in branch protection. That setting lives in repository settings, not in
+this repo, so nothing here can enforce or detect it.
 
 Bumping the major version starts a new alias (`v2`) and leaves the previous one
 pinned to its last release, so existing `@v1` consumers keep working.

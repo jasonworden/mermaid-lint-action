@@ -21,7 +21,8 @@ inputs:
     description: >
       npm version range for @mermaid-lint/cli. Pinned by default so a floating
       action ref such as @v1 stays reproducible. Set to an empty string to
-      always pull the latest release.
+      always pull the latest release. Note the CLI is still 0.x, where npm
+      reads a caret as patch-only — ^0.35.1 means >=0.35.1 <0.36.0.
     required: false
     default: '^0.35.1'
   working-directory:

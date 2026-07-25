@@ -3,22 +3,28 @@
 /**
  * Resolves an in-diagram offset to a line number in the source file.
  *
- * `fenceLine` is the line of the opening ``` fence. `offset` is the position
- * within the diagram body, and `base` says what that offset counts from — the
- * CLI is not consistent about this, so callers have to tell us which they have.
+ * `fenceLine` is the line of the opening ``` fence and `offset` is the position
+ * within the diagram body. `adjust` absorbs the difference in how the CLI counts
+ * that offset; prefer the two named wrappers below over calling this directly.
  *
- * When `offset` is absent we can't do better than the fence itself; guessing
- * one line in would put the annotation on the wrong statement.
+ * When `offset` is absent we can't do better than the fence itself; guessing one
+ * line in would put the annotation on the wrong statement.
  *
  * @param {number} fenceLine
  * @param {number|undefined|null} offset
- * @param {0|1} base - 0 if `offset` is 0-indexed, 1 if 1-indexed
+ * @param {number} adjust - added to close the gap between the offset's base and 1
  * @returns {number} 1-based line number in the file
  */
-function resolveLine(fenceLine, offset, base) {
-  const line = offset == null ? fenceLine : fenceLine + offset + (1 - base);
+function resolveLine(fenceLine, offset, adjust) {
+  const line = offset == null ? fenceLine : fenceLine + offset + adjust;
   return Math.max(1, line);
 }
+
+/** `error.line` counts from 0 within the diagram body, so it needs one more. */
+const errorLine = (fenceLine, offset) => resolveLine(fenceLine, offset, 1);
+
+/** `warning.line` already counts from 1, so the fence line is the only offset. */
+const warningLine = (fenceLine, offset) => resolveLine(fenceLine, offset, 0);
 
 /**
  * Converts mermaid-lint JSON output into GitHub Actions annotation objects.
@@ -44,14 +50,14 @@ function buildAnnotations(results) {
         errors.push({
           message: diagram.error?.message ?? 'parse error',
           file: file.path,
-          startLine: resolveLine(diagram.line, diagram.error?.line, 0),
+          startLine: errorLine(diagram.line, diagram.error?.line),
         });
       }
       for (const w of diagram.warnings ?? []) {
         warnings.push({
           message: `${w.rule}: ${w.message}`,
           file: file.path,
-          startLine: resolveLine(diagram.line, w.line, 1),
+          startLine: warningLine(diagram.line, w.line),
         });
       }
     }

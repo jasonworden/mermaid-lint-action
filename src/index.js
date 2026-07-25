@@ -2,10 +2,11 @@
 const core = require('@actions/core');
 const exec = require('@actions/exec');
 const { buildAnnotations } = require('./annotate.js');
-const { buildNpxArgs, readSummary, formatSummary } = require('./args.js');
+const { buildNpxArgs, readSummary, formatSummary } = require('./cli.js');
 
 async function run() {
-  const files = core.getInput('files').trim();
+  // No trim: buildNpxArgs splits on whitespace and drops empties.
+  const files = core.getInput('files');
   const strict = core.getBooleanInput('strict');
   const version = core.getInput('version').trim();
   const workingDir = core.getInput('working-directory').trim() || '.';
