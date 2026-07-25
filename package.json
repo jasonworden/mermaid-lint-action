@@ -1,6 +1,6 @@
 {
   "name": "mermaid-lint-action",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "GitHub Action — validate Mermaid diagrams with inline PR annotations",
   "private": true,
   "type": "commonjs",

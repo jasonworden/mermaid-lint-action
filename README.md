@@ -126,12 +126,21 @@ repository.
 
 ## Releasing
 
-Push a semver tag. The release workflow publishes the GitHub Release and
-force-moves the matching major alias, so `@v1` follows along.
+Releases are driven by `package.json`'s version, bumped in the PR itself:
 
-```bash
-git tag v1.0.1 && git push origin v1.0.1
-```
+1. Bump the version in your PR — `npm version patch|minor|major --no-git-tag-version`.
+2. Merge to `main`.
+3. The release workflow tags it, publishes the GitHub Release, and force-moves
+   the major alias so `@v1` follows along.
+
+No tag is pushed by hand, and no workflow commits back to `main`.
+
+A PR that touches `src/`, `dist/`, or `action.yml` without bumping the version
+fails the Version Check job — otherwise the merge would quietly produce no
+release at all. Docs- and CI-only PRs need no bump.
+
+Bumping the major version starts a new alias (`v2`) and leaves the previous one
+pinned to its last release, so existing `@v1` consumers keep working.
 
 ## License
 
