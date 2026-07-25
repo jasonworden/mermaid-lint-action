@@ -11,9 +11,19 @@ inputs:
     required: false
     default: ''
   strict:
-    description: 'Treat semantic warnings as errors (exit 1 on warnings).'
+    description: >
+      Pass --strict to mermaid-lint, promoting advisory warnings to failures.
+      Note that rules whose own severity is "error" (duplicate-ids, for one)
+      already fail the run without this.
     required: false
     default: 'false'
+  version:
+    description: >
+      npm version range for @mermaid-lint/cli. Pinned by default so a floating
+      action ref such as @v1 stays reproducible. Set to an empty string to
+      always pull the latest release.
+    required: false
+    default: '^0.35.1'
   working-directory:
     description: 'Directory to run mermaid-lint from. Defaults to repo root.'
     required: false
